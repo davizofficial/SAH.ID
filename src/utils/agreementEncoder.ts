@@ -11,6 +11,18 @@ export interface AgreementData {
   createdAt: string;
 }
 
+export interface ReceiptData {
+  id: string;
+  title: string;
+  recipientAddress: string;
+  amount: string;
+  description: string;
+  creatorAddress: string;
+  createdAt: string;
+  paidAt: string;
+  transactionHash: string;
+}
+
 /**
  * Encode agreement data ke base64 URL-safe string
  * Data akan disimpan di URL sehingga bisa diakses publik
@@ -82,6 +94,42 @@ export function extractAgreementFromURL(): AgreementData | null {
     return decodeAgreementData(encodedData);
   } catch (error) {
     console.error('Error extracting agreement from URL:', error);
+    return null;
+  }
+}
+
+/**
+ * Generate public shareable receipt link dengan embedded data
+ */
+export function generateReceiptLink(data: ReceiptData): string {
+  const encoded = encodeAgreementData(data as unknown as AgreementData);
+  const origin = window.location.origin;
+  return `${origin}/#/receipt/${data.id}?data=${encoded}`;
+}
+
+/**
+ * Extract receipt data dari URL query params
+ */
+export function extractReceiptFromURL(): ReceiptData | null {
+  try {
+    const hash = window.location.hash;
+    const queryStart = hash.indexOf('?');
+    
+    if (queryStart === -1) return null;
+    
+    const queryString = hash.substring(queryStart + 1);
+    const params = new URLSearchParams(queryString);
+    const encodedData = params.get('data');
+    
+    if (!encodedData) return null;
+    
+    const decoded = decodeAgreementData(encodedData);
+    if (!decoded) return null;
+    
+    // Cast to ReceiptData (includes paidAt and transactionHash)
+    return decoded as unknown as ReceiptData;
+  } catch (error) {
+    console.error('Error extracting receipt from URL:', error);
     return null;
   }
 }

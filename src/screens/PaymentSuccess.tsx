@@ -1,10 +1,11 @@
-﻿import React, { useRef } from 'react';
+﻿import React, { useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useAgreements } from '../contexts/AgreementContext';
 import { useToast } from '../contexts/ToastContext';
+import { extractReceiptFromURL, type ReceiptData } from '../utils/agreementEncoder';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import CheckCircle from 'lucide-react/dist/esm/icons/check-circle';
@@ -12,6 +13,7 @@ import ExternalLink from 'lucide-react/dist/esm/icons/external-link';
 import Shield from 'lucide-react/dist/esm/icons/shield';
 import Download from 'lucide-react/dist/esm/icons/download';
 import Loader2 from 'lucide-react/dist/esm/icons/loader-2';
+import Copy from 'lucide-react/dist/esm/icons/copy';
 
 const PaymentSuccess: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -20,7 +22,52 @@ const PaymentSuccess: React.FC = () => {
   const { showToast } = useToast();
   const receiptRef = useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = React.useState(false);
-  const agreement = getAgreement(id || '');
+
+  // Try to get data from URL first (for public access), then fallback to context
+  const agreement = useMemo(() => {
+    // First try to extract from URL (public access)
+    const urlData = extractReceiptFromURL();
+    if (urlData) {
+      return {
+        id: urlData.id,
+        title: urlData.title,
+        recipientAddress: urlData.recipientAddress,
+        amount: urlData.amount,
+        description: urlData.description,
+        status: 'paid' as const,
+        creatorAddress: urlData.creatorAddress,
+        createdAt: new Date(urlData.createdAt),
+        paidAt: new Date(urlData.paidAt),
+        transactionHash: urlData.transactionHash,
+      };
+    }
+    // Fallback to context (for logged-in users)
+    return getAgreement(id || '');
+  }, [id, getAgreement]);
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    showToast('Berhasil disalin', 'success');
+  };
+
+  const getShareableLink = () => {
+    if (!agreement) return '';
+    const origin = window.location.origin;
+    const receiptData: ReceiptData = {
+      id: agreement.id,
+      title: agreement.title,
+      recipientAddress: agreement.recipientAddress,
+      amount: agreement.amount,
+      description: agreement.description,
+      creatorAddress: agreement.creatorAddress,
+      createdAt: agreement.createdAt.toISOString(),
+      paidAt: agreement.paidAt?.toISOString() || new Date().toISOString(),
+      transactionHash: agreement.transactionHash || '',
+    };
+    const encoded = btoa(encodeURIComponent(JSON.stringify(receiptData)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    return `${origin}/#/receipt/${agreement.id}?data=${encoded}`;
+  };
 
   if (!agreement || agreement.status !== 'paid') {
     return (
@@ -177,6 +224,28 @@ const PaymentSuccess: React.FC = () => {
           </Button>
           <Button onClick={() => window.open('https://basescan.org/tx/' + agreement.transactionHash, '_blank')} variant="outline" className="flex-1 h-11 border-primary/30 text-primary hover:bg-primary/5 rounded-lg font-medium"><ExternalLink className="w-4 h-4 mr-2" />Verifikasi di BaseScan</Button>
         </div>
+        
+        {/* Share Receipt Link */}
+        <div className="mt-4 p-4 bg-white rounded-lg border border-slate-200">
+          <p className="text-sm text-slate-600 mb-2">Bagikan bukti pembayaran ini:</p>
+          <div className="flex gap-2">
+            <input 
+              type="text" 
+              readOnly 
+              value={getShareableLink()} 
+              className="flex-1 px-3 py-2 text-xs font-mono bg-slate-50 border border-slate-200 rounded-lg truncate"
+            />
+            <Button 
+              onClick={() => { copyToClipboard(getShareableLink()); }} 
+              variant="outline" 
+              className="h-10 px-4 border-slate-200"
+            >
+              <Copy className="w-4 h-4" />
+            </Button>
+          </div>
+          <p className="text-xs text-slate-400 mt-2">Link ini dapat diakses oleh siapa saja tanpa perlu login</p>
+        </div>
+        
         <p className="text-center text-xs text-slate-400 mt-6">Powered by SAH.ID - Platform Kesepakatan Digital</p>
       </div>
     </div>
